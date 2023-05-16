@@ -33,7 +33,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <geometry_msgs/msg/detail/twist_stamped__struct.hpp>
 #include <map>
 #include <memory>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/publisher.hpp>
+#include <rclcpp/qos.hpp>
+#include <sensor_msgs/msg/detail/joy__struct.hpp>
 #include <set>
 #include <string>
 
@@ -57,9 +60,14 @@ namespace teleop_twist_joy {
  * for robots which link TeleopTwistJoy directly into base nodes.
  */
 struct TeleopTwistJoy::Impl {
+  Impl(TeleopTwistJoy &parent_object) : parent(parent_object){};
   void joyCallback(const sensor_msgs::msg::Joy::SharedPtr joy);
+  void publishTwist(geometry_msgs::msg::Twist::UniquePtr &twist);
   void sendCmdVelMsg(const sensor_msgs::msg::Joy::SharedPtr,
                      const std::string &which_map);
+
+  // Maintain access to the parent class through a reference
+  TeleopTwistJoy &parent;
 
   rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub;
@@ -71,6 +79,7 @@ struct TeleopTwistJoy::Impl {
   int64_t enable_turbo_button;
 
   std::string stamped_frame_id;
+  bool publish_stamped_twist;
 
   std::map<std::string, int64_t> axis_linear_map;
   std::map<std::string, std::map<std::string, double>> scale_linear_map;
@@ -86,17 +95,8 @@ struct TeleopTwistJoy::Impl {
  */
 TeleopTwistJoy::TeleopTwistJoy(const rclcpp::NodeOptions &options)
     : Node("teleop_twist_joy_node", options) {
-  pimpl_ = new Impl;
 
-  pimpl_->cmd_vel_pub =
-      this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
-  pimpl_->cmd_vel_stamped_pub =
-      this->create_publisher<geometry_msgs::msg::TwistStamped>(
-          "cmd_vel_stamped", 10);
-  pimpl_->joy_sub = this->create_subscription<sensor_msgs::msg::Joy>(
-      "joy", rclcpp::QoS(10),
-      std::bind(&TeleopTwistJoy::Impl::joyCallback, this->pimpl_,
-                std::placeholders::_1));
+  pimpl_ = new Impl(*this);
 
   pimpl_->require_enable_button =
       this->declare_parameter("require_enable_button", true);
@@ -106,7 +106,25 @@ TeleopTwistJoy::TeleopTwistJoy(const rclcpp::NodeOptions &options)
   pimpl_->enable_turbo_button =
       this->declare_parameter("enable_turbo_button", -1);
 
-  pimpl_->stamped_frame_id = this->declare_parameter("stamped_frame_id", "");
+  pimpl_->stamped_frame_id =
+      this->declare_parameter("stamped_frame_id", "base_link");
+
+  pimpl_->publish_stamped_twist =
+      this->declare_parameter("publish_stamped_twist", false);
+
+  pimpl_->cmd_vel_pub =
+      this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+
+  if (pimpl_->publish_stamped_twist) {
+    pimpl_->cmd_vel_stamped_pub =
+        this->create_publisher<geometry_msgs::msg::TwistStamped>(
+            "cmd_vel_stamped", 10);
+  }
+
+  pimpl_->joy_sub = this->create_subscription<sensor_msgs::msg::Joy>(
+      "joy", rclcpp::QoS(10),
+      std::bind(&TeleopTwistJoy::Impl::joyCallback, this->pimpl_,
+                std::placeholders::_1));
 
   std::map<std::string, int64_t> default_linear_map{
       {"x", 5L},
@@ -334,13 +352,27 @@ double getVal(const sensor_msgs::msg::Joy::SharedPtr joy_msg,
   return joy_msg->axes[axis_map.at(fieldname)] * scale_map.at(fieldname);
 }
 
+void TeleopTwistJoy::Impl::publishTwist(
+    geometry_msgs::msg::Twist::UniquePtr &twist) {
+
+  // Publish stamped twist if needed
+  if (publish_stamped_twist) {
+    auto cmd_vel_stamped_msg =
+        std::make_unique<geometry_msgs::msg::TwistStamped>();
+    cmd_vel_stamped_msg->header.frame_id = this->stamped_frame_id;
+    cmd_vel_stamped_msg->header.stamp = this->parent.now();
+    cmd_vel_stamped_msg->twist = geometry_msgs::msg::Twist(*twist);
+    cmd_vel_stamped_pub->publish(std::move(cmd_vel_stamped_msg));
+  }
+
+  cmd_vel_pub->publish(std::move(twist));
+}
+
 void TeleopTwistJoy::Impl::sendCmdVelMsg(
     const sensor_msgs::msg::Joy::SharedPtr joy_msg,
     const std::string &which_map) {
   // Initializes with zeros by default.
   auto cmd_vel_msg = std::make_unique<geometry_msgs::msg::Twist>();
-  auto cmd_vel_stamped_msg =
-      std::make_unique<geometry_msgs::msg::TwistStamped>();
 
   cmd_vel_msg->linear.x =
       getVal(joy_msg, axis_linear_map, scale_linear_map[which_map], "x");
@@ -355,17 +387,14 @@ void TeleopTwistJoy::Impl::sendCmdVelMsg(
   cmd_vel_msg->angular.x =
       getVal(joy_msg, axis_angular_map, scale_angular_map[which_map], "roll");
 
-  cmd_vel_stamped_msg->header.frame_id = this->stamped_frame_id;
-  cmd_vel_stamped_msg->twist = geometry_msgs::msg::Twist(*cmd_vel_msg);
-
-  cmd_vel_pub->publish(std::move(cmd_vel_msg));
-  cmd_vel_stamped_pub->publish(std::move(cmd_vel_stamped_msg));
+  publishTwist(cmd_vel_msg);
 
   sent_disable_msg = false;
 }
 
 void TeleopTwistJoy::Impl::joyCallback(
     const sensor_msgs::msg::Joy::SharedPtr joy_msg) {
+
   if (enable_turbo_button >= 0 &&
       static_cast<int>(joy_msg->buttons.size()) > enable_turbo_button &&
       joy_msg->buttons[enable_turbo_button]) {
@@ -380,7 +409,7 @@ void TeleopTwistJoy::Impl::joyCallback(
     if (!sent_disable_msg) {
       // Initializes with zeros by default.
       auto cmd_vel_msg = std::make_unique<geometry_msgs::msg::Twist>();
-      cmd_vel_pub->publish(std::move(cmd_vel_msg));
+      publishTwist(cmd_vel_msg);
       sent_disable_msg = true;
     }
   }

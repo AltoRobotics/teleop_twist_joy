@@ -16,7 +16,9 @@ def generate_launch_description():
         launch.actions.DeclareLaunchArgument(
             'joy_vel', default_value='cmd_vel'),
         launch.actions.DeclareLaunchArgument(
-            'joy_vel_stamped', default_value='cmd_vel_stamped'),
+            'joy_vel', default_value='cmd_vel'),
+        launch.actions.DeclareLaunchArgument(
+            'publish_stamped_twist', default_value='false'),
         launch.actions.DeclareLaunchArgument(
             'joy_config', default_value='ps3'),
         launch.actions.DeclareLaunchArgument(
@@ -25,6 +27,8 @@ def generate_launch_description():
             launch.substitutions.TextSubstitution(text=os.path.join(
                 get_package_share_directory('teleop_twist_joy'), 'config', '')),
             joy_config, launch.substitutions.TextSubstitution(text='.config.yaml')]),
+        launch.actions.DeclareLaunchArgument(
+            'stamped_frame_id', default_value='base_link'),
 
         launch_ros.actions.Node(
             package='joy', executable='joy_node', name='joy_node',
@@ -35,8 +39,12 @@ def generate_launch_description():
             }]),
         launch_ros.actions.Node(
             package='teleop_twist_joy', executable='teleop_node',
-            name='teleop_twist_joy_node', parameters=[config_filepath],
-            remappings={('/cmd_vel', launch.substitutions.LaunchConfiguration('joy_vel')),
-                        ('/cmd_vel_stamped', launch.substitutions.LaunchConfiguration('joy_vel_stamped'))},
+            name='teleop_twist_joy_node', parameters=[config_filepath,
+                                                      {
+                                                          'stamped_frame_id': launch.substitutions.LaunchConfiguration('stamped_frame_id'),
+                                                          'publish_stamped_twist': launch.substitutions.LaunchConfiguration('publish_stamped_twist')
+                                                      }],
+            remappings={
+                ('/cmd_vel', launch.substitutions.LaunchConfiguration('joy_vel'))},
         ),
     ])
