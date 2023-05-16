@@ -16,7 +16,7 @@ def generate_launch_description():
         launch.actions.DeclareLaunchArgument(
             'joy_vel', default_value='cmd_vel'),
         launch.actions.DeclareLaunchArgument(
-            'joy_vel', default_value='cmd_vel'),
+            'joy_vel_stamped', default_value='cmd_vel_stamped'),
         launch.actions.DeclareLaunchArgument(
             'publish_stamped_twist', default_value='false'),
         launch.actions.DeclareLaunchArgument(
@@ -45,6 +45,7 @@ def generate_launch_description():
                                                           'publish_stamped_twist': launch.substitutions.LaunchConfiguration('publish_stamped_twist')
                                                       }],
             remappings={
-                ('/cmd_vel', launch.substitutions.LaunchConfiguration('joy_vel'))},
+                ('/cmd_vel', launch.substitutions.LaunchConfiguration('joy_vel')),
+                ('/cmd_vel_stamped', launch.substitutions.LaunchConfiguration('joy_vel_stamped'))},
         ),
     ])

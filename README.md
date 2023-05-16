@@ -2,13 +2,13 @@ ros2/teleop_twist_joy
 ================
 
 # Overview
-The purpose of this package is to provide a generic facility for tele-operating Twist-based ROS2 robots with a standard joystick. 
+The purpose of this package is to provide a generic facility for tele-operating Twist-based ROS2 robots with a standard joystick.
 It converts joy messages to velocity commands.
 
 This node provides no rate limiting or autorepeat functionality. It is expected that you take advantage of the features built into [joy](https://index.ros.org/p/joy/github-ros-drivers-joystick_drivers/#foxy) for this.
 
 ## Executables
-The package comes with the `teleop_node` that republishes `sensor_msgs/msg/Joy` messages as scaled `geometry_msgs/msg/Twist` messages.
+The package comes with the `teleop_node` that republishes `sensor_msgs/msg/Joy` messages as scaled `geometry_msgs/msg/Twist` and `geometry_msgs/msg/TwistStamped` messages.
 
 ## Subscribed Topics
 - `joy (sensor_msgs/msg/Joy)`
@@ -18,13 +18,19 @@ The package comes with the `teleop_node` that republishes `sensor_msgs/msg/Joy` 
 - `cmd_vel (geometry_msgs/msg/Twist)`
   - Command velocity messages arising from Joystick commands.
 
+- `cmd_vel_stamped (geometry_msgs/msg/TwistStamped)`
+  - Command velocity messages (stamped with the desired frame ID) arising from Joystick commands. Only publishes if `publish_stamped_twist` is `true`
+
 ## Parameters
+- `publish_stamped_twist (bool, default: false)`
+  - Whether a stamped version of the twist command should be published together with the un-stamped one.
+
 - `require_enable_button (bool, default: true)`
   - Whether to require the enable button for enabling movement.
 
 - `enable_button (int, default: 0)`
   - Joystick button to enable regular-speed movement.
-  
+
 - `enable_turbo_button (int, default: -1)`
   - Joystick button to enable high-speed movement (disabled when -1).
 
@@ -51,22 +57,18 @@ The package comes with the `teleop_node` that republishes `sensor_msgs/msg/Joy` 
   - `axis_angular.yaw (int, default: 2)`
   - `axis_angular.pitch (int, default: -1)`
   - `axis_angular.roll (int, default: -1)`
-  
+
 - `scale_angular.<axis>`
   - Scale to apply to joystick angular axis.
   - `scale_angular.yaw (double, default: 0.5)`
   - `scale_angular.pitch (double, default: 0.0)`
   - `scale_angular.roll (double, default: 0.0)`
-  
+
 - `scale_angular_turbo.<axis>`
   - Scale to apply to joystick angular axis for high-speed movement.
   - `scale_angular_turbo.yaw (double, default: 1.0)`
   - `scale_angular_turbo.pitch (double, default: 0.0)`
   - `scale_angular_turbo.roll (double, default: 0.0)`
-    
-
-  
-
 
 # Usage
 
@@ -75,7 +77,7 @@ For most users building from source will not be required, execute `apt-get insta
 
 ## Run
 A launch file has been provided which has three arguments which can be changed in the terminal or via your own launch file.
-To configure the node to match your joystick a config file can be used. 
+To configure the node to match your joystick a config file can be used.
 There are several common ones provided in this package (atk3, ps3-holonomic, ps3, xbox, xd3), located here: https://github.com/ros2/teleop_twist_joy/tree/eloquent/config.
 
 PS3 is default, to run for another config (e.g. xbox) use this:
@@ -87,6 +89,12 @@ __Note:__ this launch file also launches the `joy` node so do not run it separat
 
 
 ## Arguments
+- `joy_vel (string, default: 'cmd_vel')`
+  - Name of the topic to send twist commands to
+- `joy_vel_stamped (string, default: 'cmd_vel_stamped')`
+  - Name of the topic to send stamped twist commands to
+- `publish_stamped_twist (bool, default: 'false')`
+  - Whether to publish stamped twist commands or not
 - `joy_config (string, default: 'ps3')`
   - Config file to use
 - `joy_dev (string, default: 'dev/input/js0')`
